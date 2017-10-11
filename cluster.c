@@ -1,5 +1,15 @@
 #include "cluster.h"
 
+typedef struct {
+	double odometer;
+	double trip;
+	int range;
+} savedData;
+
+FILE *saveFile;
+
+savedData data;
+
 //Mode 1 command
 byte ecm_mode1[] = {0xF4, 0x57, 0x01, 0x00, 0xB4};
 
@@ -102,6 +112,45 @@ int oil = 0;
 struct timespec fuelStart={0,0}, fuelEnd={0,0};
 int fuelLevel = 100;
 
+void saveData() {
+	saveFile = fopen("/home/pi/.cluster.dat","w+");
+	fwrite(&data, sizeof(data), 1, saveFile);
+	fclose(saveFile);
+}
+
+void loadData() {
+	saveFile = fopen("/home/pi/.cluster.dat","r");
+	fread(&data, sizeof(data), 1, saveFile);
+	fclose(saveFile);
+}
+
+void tripCallback(int gpio, int level, uint32_t tick) {
+	if (level == 0) {
+		data.trip = 0;
+		gpioDelay(2000);
+	}
+}
+
+void rangeCallback(int gpio, int level, uint32_t tick) {
+	if (level == 0) {
+		fuelLevel = 100;
+		data.range = 25/(((float)mpgTotal)/mpgSamples)*100;
+		gpioDelay(2000);
+	}
+}
+
+void emergencyRebootCallback(int gpio, int level, uint32_t tick) {
+	if (level == 0) {
+        	saveData();
+	        finish();
+        	gpioTerminate();
+	        aldl_ftdi_disconnect();
+		sync();
+		reboot(RB_AUTOBOOT);
+		exit(0);
+	}
+}
+
 void oilCallback(int gpio, int level, uint32_t tick) {
 	if (level == 1) {
 		clock_gettime(CLOCK_MONOTONIC, &oilEnd);
@@ -117,8 +166,6 @@ void fuelCallback(int gpio, int level, uint32_t tick) {
 		fuelLevel = timeToCharge*100/19800;
 	}
 }
-
-double trip = 0;
 
 int main() {
 	init(&w, &h);
@@ -192,6 +239,20 @@ int main() {
 	gpioSetMode(25, PI_INPUT); //Right Blinker
 	gpioSetMode(9, PI_INPUT); //Left Blinker
 
+	gpioSetMode(11, PI_INPUT); //Trip Reset
+	gpioSetMode(8, PI_INPUT); //Mileage Reset
+	gpioSetMode(1, PI_INPUT); //Reboot
+
+	gpioSetPullUpDown(11, PI_PUD_UP);
+	gpioSetPullUpDown(8, PI_PUD_UP);
+	gpioSetPullUpDown(1, PI_PUD_UP);
+
+	gpioSetAlertFunc(11, tripCallback);
+	gpioSetAlertFunc(8, rangeCallback);
+	gpioSetAlertFunc(1, emergencyRebootCallback);
+
+	loadData();
+
 	while(sigEnd == 0) {
 		aldl_ftdi_flush();
 		if((aldl_send_message(ecm_mode1, 5)) < 0) {
@@ -218,17 +279,18 @@ int main() {
 		int * errorSize = (int *)0;
 		int * errors = getBitErrors(ecm_mode1_data, 13, 5, malfBits, errorSize);
 
-		trip += mph/3600000.0*150;
-		int range = 25/(((float)mpgTotal)/mpgSamples)*100-trip; //25 gallon tank/avgMpg
+		data.trip += mph/3600000.0*150;
+		data.range = 25/(((float)mpgTotal)/mpgSamples)*100-data.trip; //25 gallon tank/avgMpg
+		data.odometer += data.trip;
 
 		nanosleep(&scanTime, NULL);
 		Background(0, 0, 0);
 		getBlinker();
 		getFuel();
 		getOil();
-		drawStatusBar(statusOrigin, statusBarWidth, statusBarHeight, fuelLevel, trip, range);
+		drawStatusBar(statusOrigin, statusBarWidth, statusBarHeight, fuelLevel, data.trip, data.range);
 		drawInfoCenter(errors, (int) errorSize, infoCenterOrigin, infoCenterWidth, infoCenterHeight);
-		drawOdometer(157463, mpg, ((float)mpgTotal)/mpgSamples, odometerOrigin, odometerWidth, odometerHeight);
+		drawOdometer(data.odometer, mpg, ((float)mpgTotal)/mpgSamples, odometerOrigin, odometerWidth, odometerHeight);
 		//drawSpeedLimit(65);
 		drawMeter(rpmArcOrigin, rpmArcRadius, rpmArcAngleStart, rpmArcAngleEnd, rpm, rpmMax, 1000, "RPM", 4000);
 		drawMeter(oilArcOrigin, oilArcRadius, oilArcAngleStart, oilArcAngleEnd, oil, oilMax, 10, "PSI", 35);
@@ -238,6 +300,7 @@ int main() {
 		End();
 	}
 
+	saveData();
 	finish();
 	gpioTerminate();
 	aldl_ftdi_disconnect();

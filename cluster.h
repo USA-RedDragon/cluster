@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/reboot.h>
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
