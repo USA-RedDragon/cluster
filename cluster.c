@@ -1,5 +1,47 @@
 #include "cluster.h"
 
+#include <libftdi1/ftdi.h>
+
+struct ftdi_context *ftdi;
+
+int aldl_ftdi_connect(int vendor, int device) {
+	int ret;
+
+	if((ftdi = ftdi_new()) == 0) {
+		fprintf(stderr, "ftdi_new failed\n");
+		return -1;
+	}
+
+	if((ret = ftdi_usb_open(ftdi, vendor, device)) < 0) {
+		fprintf(stderr, "unable to open ftdi device: %d (%s)\n", ret, ftdi_get_error_string(ftdi));
+		return -1;
+	}
+
+	ftdi_set_baudrate(ftdi, 8192);
+	ftdi_set_latency_timer(ftdi, 2);
+
+	return 0;
+}
+
+int aldl_send_message(byte* command, int length) {
+	ftdi_usb_purge_buffers(ftdi);
+	return ftdi_write_data(ftdi, (unsigned char *)command, length);
+}
+
+int aldl_receive_message(byte* buffer, int length) {
+	int response = 0;
+	response = ftdi_read_data(ftdi,(unsigned char *)buffer,length);
+	return response;
+}
+
+void aldl_ftdi_disconnect() {
+	ftdi_free(ftdi);
+}
+
+void aldl_ftdi_flush() {
+	ftdi_usb_purge_buffers(ftdi);
+}
+
 typedef struct {
 	double odometer;
 	double trip;
@@ -124,7 +166,7 @@ void loadData() {
 	fclose(saveFile);
 }
 
-void tripCallback(int gpio, int level, uint32_t tick) {
+/*void tripCallback(int gpio, int level, uint32_t tick) {
 	if (level == 0) {
 		data.trip = 0;
 		gpioDelay(2000);
@@ -165,7 +207,7 @@ void fuelCallback(int gpio, int level, uint32_t tick) {
 		unsigned long timeToCharge = fuelEnd.tv_nsec - fuelStart.tv_nsec;
 		fuelLevel = timeToCharge*100/19800;
 	}
-}
+}*/
 
 int main() {
 	init(&w, &h);
@@ -225,7 +267,7 @@ int main() {
 		return 1;
 	}
 
-	if (gpioInitialise() < 0) {
+	/*if (gpioInitialise() < 0) {
 		printf("pigpio initialisation failed\n");
 		return 1;
 	}
@@ -250,6 +292,7 @@ int main() {
 	gpioSetAlertFunc(11, tripCallback);
 	gpioSetAlertFunc(8, rangeCallback);
 	gpioSetAlertFunc(1, emergencyRebootCallback);
+	*/
 
 	loadData();
 
@@ -302,7 +345,7 @@ int main() {
 
 	saveData();
 	finish();
-	gpioTerminate();
+	//gpioTerminate();
 	aldl_ftdi_disconnect();
 
 	return 0;
@@ -631,7 +674,7 @@ int bitValue(byte num, int bit) {
 		return 0;
 }
 
-void getBlinker() {
+/*void getBlinker() {
 	right_blinker = gpioRead(25);
 	left_blinker = gpioRead(9);
 }
@@ -671,3 +714,4 @@ void getFuel() {
 
 	gpioWrite(18, PI_ON); //Charge capacitor
 }
+*/

@@ -1,6 +1,4 @@
-#include <libaldl.h>
 #include <math.h>
-#include <pigpio.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +23,12 @@ typedef struct {
     Point start;
     Point end;
 } LineStruct;
+
+int aldl_ftdi_connect(int vendor, int device);
+int aldl_send_message(byte* command, int length);
+int aldl_receive_message(byte* buffer, int length);
+void aldl_ftdi_disconnect();
+void aldl_ftdi_flush();
 
 void drawRoundPercent(Point origin, int radius, int percent);
 void drawMeter(Point center, int radius, int angleStart, int angleEnd, int current, int max, int interval, char* unit, int redLine);
